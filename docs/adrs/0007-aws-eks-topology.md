@@ -80,3 +80,9 @@ isolation with no node management. Evaluate in phase 7 — may let us
 drop gVisor.
 
 **Non-AWS (GKE, Azure) alternatives.** User specified AWS.
+
+## Implementation status
+
+Starter accounts created 2026-04-23 (management account
+`724554527674`). Live IDs and planned accounts tracked in
+`docs/aws-accounts.md`.
