@@ -1,0 +1,48 @@
+# Gitleaks configuration for background-agent.
+#
+# Starts from the gitleaks default ruleset and adds project-specific
+# rules for the credentials this system handles. Allowlist entries
+# must carry a comment explaining why they are safe.
+#
+# Changes to this file are CODEOWNERS-protected.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "bg-agent-github-app-private-key"
+description = "GitHub App private key (PEM)"
+regex = '''-----BEGIN RSA PRIVATE KEY-----[\s\S]+?-----END RSA PRIVATE KEY-----'''
+tags = ["key", "github", "bg-agent"]
+
+[[rules]]
+id = "bg-agent-bedrock-model-invocation-signed-url"
+description = "AWS presigned URL that could expose a session token"
+regex = '''https://[\w.-]+\.amazonaws\.com/[^\s"']*X-Amz-Security-Token='''
+tags = ["aws", "bg-agent"]
+
+[[rules]]
+id = "bg-agent-approval-token-secret"
+description = "MCP approval-token signing key"
+regex = '''(?i)approval[_-]?(signing[_-]?)?key["']?\s*[:=]\s*["'][A-Za-z0-9+/=]{32,}["']'''
+tags = ["key", "bg-agent"]
+
+[allowlist]
+description = "Project allowlist — every entry needs a justification comment"
+
+paths = [
+  # Beads stores issue history in sqlite/dolt files; they are safe to commit
+  # and contain no credentials.
+  '''\.beads/.*''',
+  # Threat model and ADRs intentionally discuss credential shapes with
+  # synthetic examples (e.g., AKIA... as illustration). Allowed only in docs.
+  '''docs/.*\.md''',
+  # Example configs in fixtures may contain placeholder tokens.
+  '''fixtures/.*\.example\.ya?ml''',
+]
+
+regexes = [
+  # Gitleaks sometimes catches the literal "example" placeholder used in
+  # ADRs to illustrate a token shape. Those are intentional and safe.
+  '''your-token-here|REPLACE-ME|<placeholder>''',
+]
