@@ -1,113 +1,226 @@
 # Implementation plan
 
-Phased plan from empty repo to a production-shaped prototype on AWS EKS.
-Each phase has an exit criterion the user can demo. No phase overlaps in
-scope — finish one before starting the next.
+Phased plan from empty repo to a production-shaped prototype on AWS EKS,
+organized into **waves** of parallelizable work.
 
-## Phase 0 — Planning (current)
+A *wave* is a set of tasks that can be attempted at the same time
+because their dependencies have all landed in previous waves. Inside a
+wave, tasks that can run in parallel across multiple workers are marked
+**‖ parallel**; tasks that must run sequentially are **→ serial**.
 
-**Exit criterion:** design doc, threat model, ADRs, and seeded backlog all
-merged to `main`.
+Every task below maps to a beads issue — use `bd show <id>` for
+acceptance criteria and current status. Phase-level epic IDs appear in
+parentheses next to each phase heading.
 
-- [x] README and CLAUDE.md.
-- [x] Design doc.
-- [x] Threat model.
-- [x] ADRs for every load-bearing decision.
-- [ ] Backlog seeded (in beads once tracker is initialized).
-- [ ] User sign-off on phase 0.
+---
 
-## Phase 1 — Local walking skeleton
+## Phase 0 — Planning  (epic `background-agent-jr0`)
 
-**Exit criterion:** on a developer laptop with `kind`, a human can chat with
-a Discord-mocked CLI, get a plan, approve it, and see a pod run Claude Code
-against a toy repo — but the PR gate, validate, and CI are all stubbed to
-always pass. The purpose is to prove the control flow.
+**Exit criterion:** design artifacts merged, beads seeded, user sign-off.
+**Status:** complete.
 
-- Monorepo layout with a package per component.
-- Chat adapter: CLI-mock (Discord adapter comes in phase 2). The mock
-  reads/writes stdin/stdout so we can run the flow without network.
-- Planner: thin wrapper around an LLM with a fixed system prompt.
-- MCP tool server: `code.search` over local clones, `code.read`,
-  `plan.submit`, `dispatch.request` (stub), `audit.log` (writes JSONL).
-- Dispatcher: a process that receives a plan and `kubectl apply`s a Job
-  manifest.
-- Implementer Job: runs Claude Code with hardcoded allowlist and stubbed
-  validate that always returns `{ok: true}`.
-- Toy repo: a small Python repo in `fixtures/toy-repo/` with a few simple
-  functions; used as the dispatch target.
+### Wave 0.1 — Docs (‖ parallel)
+- README and CLAUDE.md
+- Design doc, threat model, ADRs 0001–0014
+- Phased implementation plan (this doc)
+- Backlog seed
 
-## Phase 2 — Discord adapter + real planner dialogue
+### Wave 0.2 — Tracker and remote (‖ parallel)
+- `bd init` and seed backlog
+- Push `main` to origin, apply branch protection
 
-**Exit criterion:** a human in a private Discord channel can drive the same
-flow as phase 1.
+---
 
-- Discord adapter: deploy as its own service, authenticate via bot token.
-- Session management: planner state keyed by Discord thread ID.
-- Approval UX: a `/approve` slash command that signs the current hydrated
-  prompt and returns a token to the MCP server.
-- Operator allowlist: Discord user IDs in a config file, loaded by MCP
-  server.
+## Phase 0.5 — AWS organization baseline  (epic `background-agent-ofj`)
 
-## Phase 3 — Hook-enforced PR gate + opaque validate
+**Exit criterion:** CloudTrail, GuardDuty, Config, SCPs, budgets, and
+named IAM roles live across the 3 starter accounts. No workloads can
+run safely before this phase completes.
 
-**Exit criterion:** a malicious implementer prompt ("open a PR without
-running validate") fails; the honest path still works.
+**Blocks:** phases 1, 5, 6.
 
-- Implement Claude Code hooks:
-  - `PreToolUse` for `Bash(git push)` and `Bash(gh pr create)` checks
-    audit log for a passing validate record on the current commit SHA.
-  - `PostToolUse` for `Bash(validate)` records the result to audit log.
-  - `PreToolUse` blocks any command not on the allowlist.
-- Validate service: runs as a sidecar or separate Service; implementer
-  calls via HTTP on localhost.
-- Abstraction layer in validate service that maps tool-specific errors
-  to generic hints (ADR-0004).
-- Red-team tests: a suite of adversarial prompts that the hook must block.
+### Wave 0.5.1 — Decision ADRs (‖ parallel)
+- `ofj.1` ADR-0015 IAM role design — **landed in this PR**
+- `ofj.2` ADR-0016 Bedrock for LLM access — **landed in this PR**
 
-## Phase 4 — CI integration (GitHub Actions)
+### Wave 0.5.2 — Foundational terraform (‖ parallel)
+Independent modules — 4 workers can run concurrently:
 
-**Exit criterion:** PR opens only when CI is green; hook verifies via
-GitHub API, not agent output.
+- `ofj.3` CloudTrail org trail to security account
+- `ofj.4` GuardDuty org-wide with security as delegated admin
+- `ofj.5` AWS Config aggregator in security account
+- `ofj.6` SCPs: root-user denial, region denial, IAM-user denial
+- `ofj.7` Budget alarms per account
 
-- Configure target repo with required status checks on feature branches.
-- Implementer pushes to a `background-agent/<run-id>` branch.
-- Hook on `Bash(gh pr create)` polls check run status for the pushed SHA.
-- 10-minute timeout. Exceeding the timeout = failure report back to
-  planner.
+### Wave 0.5.3 — IAM roles (→ serial, blocked by 0.5.1)
+- `ofj.8` Named IAM roles per account (Admin, DeployOps, ReadOnly,
+  AuditRead, AuditWrite) per ADR-0015
 
-## Phase 5 — Audit logging hardening
+---
 
-**Exit criterion:** a third party can reconstruct every action of every run
-from the audit log alone.
+## Phase 1 — Local walking skeleton  (epic `background-agent-ul7`)
 
-- Move audit sink from JSONL-on-disk to S3 with Object Lock.
-- Ship every MCP call, every planner message, every implementer tool call.
-- Add per-run index documents for fast querying.
-- Document retention policy.
+**Exit criterion:** on `kind`, a human can drive CLI mock → planner →
+approve → pod → PR against a toy fixture repo. PR gate, validate, and
+CI are stubbed.
 
-## Phase 6 — AWS EKS deployment
+**Blocked by:** Phase 0.5 (for clean workstation auth).
 
-**Exit criterion:** the system runs on the topology from ADR-0007.
+### Wave 1.1 — Foundation decisions (→ serial)
+- `ul7.1` Decide service languages and monorepo layout — the
+  critical-path unblocker for everything downstream.
 
-- Terraform for AWS Organizations accounts, EKS clusters, IRSA roles.
-- Helm charts for each service.
-- NetworkPolicies: default-deny, explicit allow per service.
-- Implementer pods run on a dedicated node group with gVisor runtime class.
-- ECR with image signing (Sigstore).
+### Wave 1.2 — Parallel foundations (‖ parallel, blocked by 1.1)
+- `ul7.2` Toy target repo fixture (no deps — can start at any time)
+- `ul7.5` MCP tool server v1 — first because planner and dispatcher
+  both depend on it
 
-## Phase 7 — Hardening and observability
+### Wave 1.3 — Services (‖ parallel, blocked by 1.2)
+- `ul7.3` CLI mock chat adapter
+- `ul7.4` Planner service skeleton (needs MCP)
+- `ul7.6` Dispatcher targeting kind (needs MCP)
+- `ul7.7` Implementer pod base image
 
-**Exit criterion:** threat-model residual risks are addressed or
-explicitly accepted.
+### Wave 1.4 — Integration (→ serial, blocked by all of 1.3)
+- `ul7.8` Phase 1 end-to-end smoke
 
-- Egress monitoring (VPC flow logs to the security account).
-- GuardDuty for runtime detection.
-- Runbooks for: stuck pod, compromised token, allowlist drift.
-- Load test: 10 concurrent implementer pods.
+**Parallelism note:** with 3 workers, phase 1 can complete in roughly
+the length of its longest single-task chain:
+1.1 → 1.2 → 1.3 → 1.4.
 
-## Out of prototype scope (noted for the roadmap)
+---
 
-- Multi-tenant isolation (per-team namespaces, per-team operator lists).
-- Plan templates / memory of past plans.
-- Agent-to-agent orchestration beyond planner → implementer.
-- Self-service onboarding of new target repos by non-security-team users.
+## Phase 2 — Discord adapter + real planner dialogue  (epic `background-agent-pqk`)
+
+**Exit criterion:** a human in a private Discord channel can drive the
+phase-1 flow end-to-end.
+
+### Wave 2.1 — Adapter components (‖ parallel)
+- `pqk.1` Discord bot scaffolding and session state
+- `pqk.3` Operator allowlist and identity verification
+
+### Wave 2.2 — Approval flow (→ serial, blocked by 2.1)
+- `pqk.2` /approve slash command with signed tokens
+
+### Wave 2.3 — Integration (→ serial, blocked by 2.2)
+- `pqk.4` Phase 2 end-to-end in private Discord
+
+---
+
+## Phase 3 — Hook-enforced PR gate + opaque validate  (epic `background-agent-12a`)
+
+**Exit criterion:** adversarial prompts cannot open a PR; honest path
+still works.
+
+### Wave 3.1 — Hook framework (→ serial)
+- `12a.1` Hook framework integration
+
+### Wave 3.2 — Hooks (‖ parallel, blocked by 3.1)
+- `12a.2` PreToolUse allowlist enforcement
+- `12a.3` PreToolUse PR gate (may be stubbed against 3.1 initially)
+- `12a.4` PostToolUse validate recorder
+
+### Wave 3.3 — Validate service (→ serial, can start during wave 3.1)
+- `12a.5` Validate service with abstraction layer
+
+### Wave 3.4 — Red team (→ serial, blocked by 3.2 and 3.3)
+- `12a.6` Red-team test suite for PR gate
+
+---
+
+## Phase 4 — GitHub Actions CI integration  (epic `background-agent-o3p`)
+
+### Wave 4.1 — Setup (‖ parallel)
+- `o3p.1` Configure target repo required checks
+- `o3p.2` Hook: poll GitHub checks API for pushed SHA
+
+### Wave 4.2 — Integration (→ serial, blocked by 4.1)
+- `o3p.3` CI failure reporting back to implementer
+- `o3p.4` Smoke test: intentional breakage blocks PR
+
+---
+
+## Phase 5 — Audit logging hardening  (epic `background-agent-aop`)
+
+**Blocked by:** Phase 0.5 (CloudTrail + security-account bucket).
+
+### Wave 5.1 — Bucket and IAM (‖ parallel)
+- `aop.3` S3 Object Lock bucket configuration
+- `aop.2` Cross-account IAM for audit writes
+- `aop.4` Secret and credential scrubber (can be authored standalone)
+
+### Wave 5.2 — Shipper (→ serial, blocked by 5.1)
+- `aop.1` Audit log shipper service
+
+### Wave 5.3 — Indexing (→ serial, blocked by 5.2)
+- `aop.5` Per-run audit index documents
+
+---
+
+## Phase 6 — AWS EKS deployment  (epic `background-agent-920`)
+
+**Blocked by:** Phases 0.5 and 5.
+
+### Wave 6.1 — Terraform foundations (‖ parallel)
+- `920.1` Terraform: AWS Organizations OU structure refinements
+- `920.2` Terraform: EKS clusters per env
+- `920.3` IRSA roles per service
+
+### Wave 6.2 — App delivery (‖ parallel, blocked by 6.1)
+- `920.4` Helm charts for each service
+- `920.5` NetworkPolicies: default-deny
+- `920.6` gVisor runtime class + node group
+
+### Wave 6.3 — Cross-account integration (→ serial, blocked by 6.2)
+- `920.7` Cross-account dispatch wiring
+
+---
+
+## Phase 7 — Hardening and observability  (epic `background-agent-70a`)
+
+### Wave 7.1 — Observability (‖ parallel)
+- `70a.1` GuardDuty findings pipeline + VPC Flow Logs
+- `70a.3` Load test: 10 concurrent implementer pods
+
+### Wave 7.2 — Docs and decisions (‖ parallel)
+- `70a.2` Runbooks
+- `70a.4` Evaluate gVisor vs Fargate
+
+### Wave 7.3 — Sign-off (→ serial)
+- `70a.5` Residual threat model review
+
+---
+
+## Always-parallelizable work
+
+These tasks have no phase dependency and any available worker can take
+them at any time:
+
+- `cfe` Pre-commit hooks (secret scanning)
+- `4pf` Agent team personas in `.claude/agents/`
+- `9xr` CODEOWNERS
+- `rmm` config/implementer-tools.yaml
+- `rv9` config/target-repos.yaml
+- `h2g` Rolling open-questions tracker for ADRs 0004 and 0009
+
+## Worker/wave scaling guide
+
+| Phase | Sweet spot | Reason |
+|---|---|---|
+| 0.5 | 3–4 | Wave 0.5.2 has 5 independent terraform modules |
+| 1 | 3 | Wave 1.3 has 4 services |
+| 2 | 2 | Limited parallelism |
+| 3 | 3 | Waves 3.2 and 3.3 are parallel |
+| 4 | 2 | Mostly sequential |
+| 5 | 3 | Wave 5.1 three-way parallel |
+| 6 | 3–4 | Waves 6.1 and 6.2 have multiple modules |
+| 7 | 2–3 | Mix of docs and load-testing |
+
+## Out of prototype scope
+
+- Multi-tenant isolation (per-team namespaces, per-team operator lists)
+- Plan templates / memory of past plans
+- Agent-to-agent orchestration beyond planner → implementer
+- Self-service onboarding of new target repos by non-security-team users
+- Staging and production account pairs (`bg-agent-stg-*`,
+  `bg-agent-prd-*`)

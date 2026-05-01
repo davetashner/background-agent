@@ -24,6 +24,8 @@ writing a new one and linking back.
 | 0012 | Binary outcome for implementer runs | Accepted |
 | 0013 | Human approval required to dispatch | Accepted |
 | 0014 | Append-only audit log in S3 Object Lock | Accepted |
+| 0015 | IAM role design across AWS accounts | Accepted |
+| 0016 | Bedrock for LLM access | Accepted |
 
 ## Template
 
