@@ -1,0 +1,42 @@
+# Pre-commit hook configuration.
+#
+# Why this exists: stop secrets from reaching GitHub, ever. Gitleaks is the
+# primary defense; the other hooks catch common mistakes (private keys,
+# oversized files, conflict markers) before they land in a commit.
+#
+# Onboarding:
+#   pip install pre-commit   # or: brew install pre-commit
+#   pre-commit install       # registers the git hook
+#   pre-commit run --all-files    # sanity check once
+#
+# Changes to this file are CODEOWNERS-protected — see CODEOWNERS.
+
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+        name: Block secrets with gitleaks
+        description: Scan staged diff for leaked credentials and API keys.
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ['--maxkb=512']
+      - id: check-merge-conflict
+      - id: check-yaml
+        args: ['--allow-multiple-documents']
+      - id: check-json
+      - id: check-toml
+      - id: end-of-file-fixer
+        exclude: '\.beads/.*'
+      - id: trailing-whitespace
+        exclude: '\.beads/.*'
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        args: ['--severity=warning']

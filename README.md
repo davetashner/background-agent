@@ -70,7 +70,32 @@ human approves in chat ──▶ dispatcher ──▶ K8s pod (implementer)
                                                   human reviews PR
 ```
 
+## Development
+
+### One-time setup
+
+This repo uses [pre-commit](https://pre-commit.com) to block secrets
+and common mistakes before they land in a commit. After cloning:
+
+```bash
+pip install pre-commit          # or: brew install pre-commit
+pre-commit install              # registers the git hook locally
+pre-commit run --all-files      # sanity check the whole repo once
+```
+
+Gitleaks runs on every commit as the primary secret scanner; a CI job
+(`.github/workflows/secrets-scan.yml`) re-runs it on every PR as a
+backstop. Changes to `.pre-commit-config.yaml` and `.gitleaks.toml`
+are CODEOWNERS-protected.
+
+### Never commit secrets
+
+If the hook catches something, **do not bypass it**. Rotate the
+credential first, then remove it from the working tree. Never
+`git commit --no-verify` on this repo.
+
 ## Status
 
-Prototype — design phase. See `CLAUDE.md` for working agreements and the
-`docs/` directory (once created) for the design doc and threat model.
+Prototype — design phase. See `CLAUDE.md` for working agreements and
+the `docs/` directory for the design doc, threat model, ADRs, and the
+phased implementation plan.
